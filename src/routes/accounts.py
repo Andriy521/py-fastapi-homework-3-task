@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
+from sqlalchemy import delete
 
 from database import get_db, UserModel, ActivationTokenModel, PasswordResetTokenModel, RefreshTokenModel
 from schemas.accounts import (
@@ -126,13 +127,12 @@ async def login_user(
 @router.post("/password-reset/request/", response_model=MessageResponseSchema)
 async def request_password_reset(
     data: PasswordResetRequestSchema,
-    db: AsyncSession = Depends(get_db),
+db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(UserModel).filter(UserModel.email == data.email))
     user = result.scalar_one_or_none()
 
     if user and user.is_active:
-        # Видалити старі токени скидання
         await db.execute(delete(PasswordResetTokenModel).where(PasswordResetTokenModel.user_id == user.id))
 
         new_token = PasswordResetTokenModel(
@@ -163,7 +163,7 @@ async def complete_password_reset(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user.")
 
-    user.password = data.new_password  # використає твій сеттер пароля
+    user.password = data.new_password
     await db.delete(token_obj)
     await db.commit()
 
@@ -186,8 +186,8 @@ async def refresh_token(
     if not token_entry:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token not found or expired.")
 
-    new_access_token = jwt_manager.create_access_token(user_id)
-    new_refresh_token = jwt_manager.create_refresh_token(user_id)
+    new_access_token = jwt_manager.create_access_token(data={"sub": str(user_id)})
+    new_refresh_token = jwt_manager.create_refresh_token(data={"sub": str(user_id)})
 
     await db.delete(token_entry)
     new_refresh_token_obj = RefreshTokenModel.create(user_id=user_id, days_valid=7, token=new_refresh_token)
