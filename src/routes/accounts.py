@@ -22,6 +22,7 @@ from security.passwords import verify_password, hash_password
 from security.utils import generate_secure_token
 from config import get_jwt_auth_manager, BaseAppSettings, get_settings
 from security.interfaces import JWTAuthManagerInterface
+from security.passwords import hash_password
 
 router = APIRouter()
 
@@ -163,7 +164,8 @@ async def complete_password_reset(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user.")
 
-    user.password = data.new_password
+    hashed_password = hash_password(data.new_password)
+    user._hashed_password = hashed_password
     await db.delete(token_obj)
     await db.commit()
 
